@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+python-multipart
+scikit-learn
+numpy
+pandas
+matplotlib
+
+# Optional: semantic layer (CodeBERT). Big download (~500 MB model + torch).
+# The project works without these; the semantic score is then skipped.
+# torch
+# transformers
+httpx

@@ -1,0 +1,6 @@
+method,precision,recall,f1,accuracy,roc_auc
+Token only (threshold),0.962,0.953,0.958,0.97,0.998
+AST only (threshold),0.982,1.0,0.991,0.993,1.0
+Hand-weighted fusion (threshold),0.963,0.972,0.967,0.976,1.0
+Logistic Regression (learned),1.0,0.972,0.986,0.99,1.0
+Random Forest (learned),0.981,0.981,0.981,0.987,0.999

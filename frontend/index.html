@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code Plagiarism Detector</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --ink: #1c2230; --muted: #6b7385; --line: #dfe3ea;
+    --accent: #2b4c9b; --low: #2f7d52; --med: #b7791f; --high: #b42318;
+    --hl: rgba(224, 168, 32, .28);
+    --mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14171f; --panel: #1c212c; --ink: #e6e9f0; --muted: #98a1b5; --line: #2c3342;
+            --accent: #7b9cf0; --low: #5cc08a; --med: #e2b04a; --high: #f0776b; --hl: rgba(226,176,74,.25); }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); }
+  header { padding: 20px 28px 8px; }
+  header h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -.01em; }
+  header p { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
+  main { display: grid; grid-template-columns: 300px 1fr; gap: 20px; padding: 16px 28px 40px; align-items: start; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  section, aside { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  h2 { margin: 0 0 10px; font-size: 15px; font-weight: 650; }
+  button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line);
+           background: var(--panel); color: var(--ink); padding: 8px 12px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:focus-visible, input:focus-visible, tr:focus-visible, td:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .drop { display: block; border: 1.5px dashed var(--line); border-radius: 8px; padding: 18px; text-align: center;
+          color: var(--muted); cursor: pointer; }
+  .drop.over { border-color: var(--accent); color: var(--ink); }
+  .drop input { display: none; }
+  ul.files { list-style: none; padding: 0; margin: 12px 0; max-height: 240px; overflow: auto; font-family: var(--mono); font-size: 13px; }
+  ul.files li { padding: 3px 0; border-bottom: 1px solid var(--line); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  label.opt { display: flex; gap: 8px; align-items: flex-start; color: var(--muted); font-size: 13px; margin-top: 10px; }
+  .msg { color: var(--muted); font-size: 13px; margin-top: 8px; min-height: 1.2em; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { font-weight: 600; color: var(--muted); font-size: 13px; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  td.num { font-variant-numeric: tabular-nums; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; min-width: 70px; }
+  .bar i { display: block; height: 100%; border-radius: 3px; }
+  .badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 99px; color: #fff; }
+  .Low { background: var(--low); } .Medium { background: var(--med); } .High { background: var(--high); }
+  .stack { display: grid; gap: 20px; }
+  .heat { display: grid; gap: 2px; overflow: auto; }
+  .heat div { font-size: 11px; text-align: center; padding: 8px 0; border-radius: 3px; min-width: 34px; }
+  .heat .lab { color: var(--muted); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 8px 4px; text-align: right; }
+  .heat .cell { cursor: pointer; color: #fff; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
+  .code { border: 1px solid var(--line); border-radius: 8px; overflow: auto; max-height: 460px; }
+  .code h3 { margin: 0; padding: 8px 12px; font: 600 13px var(--mono); border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); }
+  .ln { display: grid; grid-template-columns: 42px 1fr; font: 13px/1.55 var(--mono); }
+  .ln span:first-child { color: var(--muted); text-align: right; padding-right: 10px; user-select: none; }
+  .ln span:last-child { white-space: pre; padding-right: 12px; }
+  .ln.hit { background: var(--hl); }
+  .scores { display: flex; gap: 22px; flex-wrap: wrap; margin: 6px 0 14px; }
+  .scores div small { display: block; color: var(--muted); font-size: 12px; }
+  .scores div b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  ul.files li { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  ul.files li button { padding: 2px 8px; font-size: 12px; flex: none; }
+  ul.changes { margin: 0 0 12px; padding-left: 18px; color: var(--muted); font-size: 14px; }
+  .warn { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Code Plagiarism Detector</h1>
+  <p>Upload Python submissions, compare every pair on tokens, syntax-tree structure and (optionally) code embeddings, then review the highlighted overlaps.</p>
+</header>
+
+<main>
+  <aside>
+    <h2>Submissions</h2>
+    <label class="drop" id="drop">Drop .py files here or click to choose
+      <input type="file" id="file" multiple accept=".py">
+    </label>
+    <ul class="files" id="files"></ul>
+    <label class="opt"><input type="checkbox" id="sem"> Include semantic score (CodeBERT). Needs torch + transformers; first run downloads the model.</label>
+    <div class="row">
+      <button class="primary" id="analyze">Analyze all pairs</button>
+      <button id="clear">Clear</button>
+    </div>
+    <div class="msg" id="msg"></div>
+  </aside>
+
+  <div class="stack">
+    <section id="results" class="hidden">
+      <h2>Similarity matrix</h2>
+      <div class="heat" id="heat"></div>
+    </section>
+    <section id="pairsec" class="hidden">
+      <h2>Pairs, most suspicious first</h2>
+      <table>
+        <thead><tr><th>File A</th><th>File B</th><th>Token</th><th>Structure</th><th>Semantic</th><th>Overall</th><th>Risk</th></tr></thead>
+        <tbody id="pairs"></tbody>
+      </table>
+    </section>
+    <section id="detail" class="hidden">
+      <h2 id="dtitle"></h2>
+      <div class="scores" id="dscores"></div>
+      <div class="split"><div class="code" id="ca"></div><div class="code" id="cb"></div></div>
+      <div class="msg">Highlighted lines are statements whose full syntax-tree structure appears in the other file.</div>
+    </section>
+    <section id="shortsec" class="hidden">
+      <h2 id="stitle"></h2>
+      <div class="scores" id="sstats"></div>
+      <ul class="changes" id="schanges"></ul>
+      <p class="warn">Meant to keep behaviour identical, but always run your own tests on the shortened file. The AI button sends the code to Groq.</p>
+      <div class="row"><button class="primary" id="scopy">Copy shortened code</button><button id="sdl">Download .py</button></div>
+      <div class="split" style="margin-top:12px"><div class="code" id="sa"></div><div class="code" id="sb"></div></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const pct = v => v == null ? "n/a" : Math.round(v * 100) + "%";
+const color = v => v < .5 ? "var(--low)" : v < .75 ? "var(--med)" : "var(--high)";
+const esc = s => s.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+  return r.json();
+}
+const post = (p, body) => api(p, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+const say = t => $("msg").textContent = t;
+
+async function refreshFiles() {
+  const subs = await api("/api/submissions");
+  $("files").innerHTML = subs.map(s => `<li><span>${esc(s.name)}</span><span><button data-id="${s.id}">Shorten</button> <button data-id="${s.id}" data-ai="1" title="Uses the Groq API">AI</button></span></li>`).join("") || "<li>No files yet</li>";
+  $("files").querySelectorAll("button").forEach(b => b.onclick = () => shorten(+b.dataset.id, !!b.dataset.ai));
+  return subs;
+}
+
+async function upload(fileList) {
+  const fd = new FormData();
+  [...fileList].forEach(f => fd.append("files", f));
+  const res = await api("/api/upload", { method: "POST", body: fd });
+  say(`${res.saved.length} uploaded` + (res.skipped.length ? `, skipped non-.py: ${res.skipped.join(", ")}` : ""));
+  refreshFiles();
+}
+
+$("file").onchange = e => upload(e.target.files);
+const drop = $("drop");
+["dragover", "dragenter"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => upload(e.dataTransfer.files));
+
+$("clear").onclick = async () => {
+  await api("/api/submissions", { method: "DELETE" });
+  ["results", "pairsec", "detail", "shortsec"].forEach(i => $(i).classList.add("hidden"));
+  say("Cleared."); refreshFiles();
+};
+
+$("analyze").onclick = async () => {
+  try {
+    say("Analyzing…");
+    const data = await post("/api/analyze", { semantic: $("sem").checked });
+    render(data); say(`${data.pairs.length} pairs compared.`);
+  } catch (e) { say(e.message); }
+};
+
+function render(data) {
+  // ranked table
+  $("pairs").innerHTML = data.pairs.map((p, i) => `
+    <tr tabindex="0" data-i="${i}">
+      <td>${esc(p.a_name)}</td><td>${esc(p.b_name)}</td>
+      <td class="num">${pct(p.scores.token)}</td><td class="num">${pct(p.scores.ast)}</td><td class="num">${pct(p.scores.semantic)}</td>
+      <td><div class="num">${pct(p.overall)}</div><div class="bar"><i style="width:${p.overall * 100}%;background:${color(p.overall)}"></i></div></td>
+      <td><span class="badge ${p.risk}">${p.risk}</span></td>
+    </tr>`).join("");
+  document.querySelectorAll("#pairs tr").forEach(tr => {
+    const open = () => openPair(data.pairs[tr.dataset.i]);
+    tr.onclick = open; tr.onkeydown = e => e.key === "Enter" && open();
+  });
+
+  // heatmap
+  const subs = data.submissions, n = subs.length, lookup = {};
+  data.pairs.forEach(p => { lookup[p.a + "-" + p.b] = p; lookup[p.b + "-" + p.a] = p; });
+  const heat = $("heat");
+  heat.style.gridTemplateColumns = `110px repeat(${n}, minmax(34px, 1fr))`;
+  let html = "<div></div>" + subs.map((s, i) => `<div class="lab" title="${esc(s.name)}">${i + 1}</div>`).join("");
+  subs.forEach((r, ri) => {
+    html += `<div class="lab" title="${esc(r.name)}">${ri + 1}. ${esc(r.name)}</div>`;
+    subs.forEach(c => {
+      if (r.id === c.id) { html += `<div style="background:var(--line)"></div>`; return; }
+      const p = lookup[r.id + "-" + c.id];
+      html += `<div class="cell" style="background:${color(p.overall)};opacity:${.35 + p.overall * .65}" data-a="${r.id}" data-b="${c.id}">${Math.round(p.overall * 100)}</div>`;
+    });
+  });
+  heat.innerHTML = html;
+  heat.querySelectorAll(".cell").forEach(el => el.onclick = () => openPair(lookup[el.dataset.a + "-" + el.dataset.b]));
+
+  ["results", "pairsec"].forEach(i => $(i).classList.remove("hidden"));
+}
+
+async function openPair(p) {
+  const r = await post("/api/compare", { a: p.a, b: p.b, semantic: $("sem").checked });
+  $("dtitle").textContent = `${r.a.name}  vs  ${r.b.name}`;
+  $("dscores").innerHTML = [["Overall", r.overall], ["Token", r.scores.token], ["Structure", r.scores.ast], ["Semantic", r.scores.semantic]]
+    .map(([k, v]) => `<div><small>${k}</small><b>${pct(v)}</b></div>`).join("") + `<div><small>Risk</small><span class="badge ${r.risk}">${r.risk}</span></div>`;
+  const hitsA = new Set(), hitsB = new Set();
+  r.regions.forEach(g => {
+    for (let i = g.a[0]; i <= g.a[1]; i++) hitsA.add(i);
+    for (let i = g.b[0]; i <= g.b[1]; i++) hitsB.add(i);
+  });
+  const view = (title, code, hits) => `<h3>${esc(title)}</h3>` +
+    code.split("\n").map((l, i) => `<div class="ln ${hits.has(i + 1) ? "hit" : ""}"><span>${i + 1}</span><span>${esc(l)}</span></div>`).join("");
+  $("ca").innerHTML = view(r.a.name, r.code_a, hitsA);
+  $("cb").innerHTML = view(r.b.name, r.code_b, hitsB);
+  $("detail").classList.remove("hidden");
+  $("detail").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+let shortResult = null;
+async function shorten(id, ai = false) {
+  try {
+    if (ai) say("Asking Groq to rewrite it. Big files can take a minute…");
+    const r = await post(ai ? "/api/compress/ai" : "/api/compress", { id, target_pct: 30 });
+    if (ai) say(r.used_ai ? "Done." : "AI result not used, see notes below.");
+    if (!r.ok) { say(r.error); return; }
+    shortResult = r;
+    $("stitle").textContent = `Shortened: ${r.name}`;
+    $("sstats").innerHTML = [["Lines before", r.before], ["Lines after", r.after], ["Shorter by", r.saved_pct + "%"],
+      ["Size", `${r.bytes_before} to ${r.bytes_after} bytes`]].concat(r.used_ai ? [["Model", r.model]] : []).map(([k, v]) => `<div><small>${k}</small><b>${v}</b></div>`).join("");
+    $("schanges").innerHTML = r.changes.map(c => `<li>${esc(c.what)}${c.count == null ? "" : " (" + c.count + ")"}</li>`).join("")
+      + (r.notes || []).map(n => `<li><b>Note:</b> ${esc(n)}</li>`).join("");
+    const view = (title, code) => `<h3>${esc(title)}</h3>` +
+      code.split("\n").map((l, i) => `<div class="ln"><span>${i + 1}</span><span>${esc(l)}</span></div>`).join("");
+    $("sa").innerHTML = view("Original", r.original);
+    $("sb").innerHTML = view("Shortened", r.compressed);
+    $("shortsec").classList.remove("hidden");
+    $("shortsec").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (e) { say(e.message); }
+}
+$("scopy").onclick = async () => { await navigator.clipboard.writeText(shortResult.compressed); say("Copied."); };
+$("sdl").onclick = () => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([shortResult.compressed], { type: "text/x-python" }));
+  a.download = shortResult.name.replace(/\.py$/, "") + ".short.py";
+  a.click();
+};
+
+refreshFiles();
+</script>
+</body>
+</html>
